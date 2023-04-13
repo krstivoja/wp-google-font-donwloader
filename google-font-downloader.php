@@ -1,36 +1,4 @@
 <?php
-/**
- * Plugin Name: Google Fonts Downloader
- * Description: Download Google Fonts and create a SCSS file.
- * Version: 1.0
- * Author: Your Name
- */
-
-// $argc = 2;
-// $argv = [
-//     'download.php',
-//     'https://fonts.googleapis.com/css?family=Roboto',
-// ];
-
-// include 'vendor/autoload.php';
-// include_once 'download.php';
-
-// function gfd_add_admin_menu()
-// {
-//     add_submenu_page(
-//         'options-general.php',
-//         'Google Fonts Downloader',
-//         'Google Fonts Downloader',
-//         'manage_options',
-//         'google-fonts-downloader',
-//         'gfd_options_page'
-//     );
-// }
-// add_action('admin_menu', 'gfd_add_admin_menu');
-
-
-
-
 
 $argc = 2;
 $argv = [
@@ -41,18 +9,20 @@ $argv = [
 include 'vendor/autoload.php';
 include_once 'download.php';
 
-function gfd_add_admin_menu()
-{
-    add_submenu_page(
-        'options-general.php',
+function gfd_add_admin_menu() {
+    add_menu_page(
         'Google Fonts Downloader',
         'Google Fonts Downloader',
         'manage_options',
         'google-fonts-downloader',
-        'gfd_options_page'
+        'gfd_options_page',
+        'dashicons-download',
+        90
     );
 }
 add_action('admin_menu', 'gfd_add_admin_menu');
+
+
 
 /**
  * Display the options page
@@ -74,6 +44,7 @@ function gfd_options_page()
             echo '<div class="notice notice-error"><p>Failed to download fonts: ' . $result . '</p></div>';
         }
     }
+    
 
     // Display the options page form
     ?>

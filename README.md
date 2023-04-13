@@ -1,6 +1,10 @@
 Download woff2 files from Google Fonts and generate Sass to load them
 =====================================================================
 
+Originaly downloaded from here:
+https://github.com/g105b/google-fonts-downloader
+
+
 This script is created to solve some repetitive problems that I personally find myself doing every time I work with Google Fonts. Here are the reasons why I wrote this:
 
 1. Firstly, I prefer to ship my font files with my projects, rather than rely on cross-origin font downloads.
@@ -426,3 +430,5 @@ sass ../../MyProject/src/font/fira-sans.scss
   src: url("/asset/font/fira-sans/fira-sans-bold-normal-latin.woff2") format("woff2");
   unicode-range: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"; }
 ```
+
+
