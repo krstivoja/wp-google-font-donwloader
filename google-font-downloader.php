@@ -1,13 +1,15 @@
 <?php
 
-$argc = 2;
-$argv = [
-    'download.php',
-    'https://fonts.googleapis.com/css?family=Akronim|Fira+Sans:100,400,400i,700|Lacquer|Odibee+Sans&display=swap',
-];
+/*
+Plugin Name: Google Fonts Downloader
+Plugin URI: https://example.com/plugins/google-fonts-downloader
+Description: This plugin allows you to download Google Fonts for offline use.
+Version: 1.0
+Author: Your Name
+Author URI: https://example.com/
+License: GPL2
+*/
 
-include 'vendor/autoload.php';
-include_once 'download.php';
 
 function gfd_add_admin_menu() {
     add_menu_page(
@@ -44,6 +46,16 @@ function gfd_options_page()
             echo '<div class="notice notice-error"><p>Failed to download fonts: ' . $result . '</p></div>';
         }
     }
+
+    $argc = 2;
+    $argv = [
+        'download.php',
+        'https://fonts.googleapis.com/css?family=Akronim|Fira+Sans:100,400,400i,700|Lacquer|Odibee+Sans&display=swap',
+    ];
+
+    include 'vendor/autoload.php';
+    include_once 'download.php';
+
     
 
     // Display the options page form
@@ -62,42 +74,3 @@ function gfd_options_page()
     <?php
 }
 
-
-/**
- * Download the fonts from the specified URL
- *
- * @return bool|string True on success, or an error message on failure
- */
-function gfd_download_fonts()
-{
-    // Check the nonce
-    if (!isset($_POST['gfd_download_fonts_nonce']) || !wp_verify_nonce($_POST['gfd_download_fonts_nonce'], 'gfd_download_fonts')) {
-        return 'Invalid nonce';
-    }
-
-    // Get the font URL from the form data
-    $fontUrl = isset($_POST['font_url']) ? trim($_POST['font_url']) : '';
-
-    // Check if the font URL is valid
-    $components = parse_url($fontUrl);
-    if ($components === false || !isset($components['host']) || $components['host'] !== 'fonts.googleapis.com') {
-        return 'Invalid font URL';
-    }
-
-    // Call the download function with the font URL
-    $argc = 2;
-    $argv = [
-        'download.php',
-        $fontUrl,
-    ];
-    try {
-        gfd_download($argv);
-        return true;
-    } catch (Exception $e) {
-        return $e->getMessage();
-    }
-
-    // Include the required files
-    require_once 'vendor/autoload.php';
-    require_once 'download.php';
-}
