@@ -1,0 +1,255 @@
+<?php
+
+use Gt\Fetch\Http;
+use Gt\Fetch\Response\BodyResponse;
+
+const VALID_HOST = "fonts.googleapis.com";
+const VALID_PATH = "/css";
+const VALID_QUERY = "family=";
+const REGEX_CSS_PARTS = "/\/\*\s*(?<UNICODE_NAME>[^\s]+)\s*\*\/(?<CSS_LINES>[^}]*)/s";
+const REGEX_FONT_FAMILY = "/font-family: [\"']([^\"']+)/";
+const REGEX_FONT_STYLE = "/font-style: ([^;]+)/";
+const REGEX_FONT_WEIGHT = "/font-weight: ([^;]+)/";
+const REGEX_URI = "/src:.*url\(([^\)]*)/";
+const REGEX_UNICODE_RANGE = "/unicode-range: ([^;]*)/";
+const WEIGHT_NAMES = [
+	"thin" => 100,
+	"extra-light" => 200,
+	"light" => 300,
+	"regular" => 400,
+	"medium" => 500,
+	"semi-bold" => 600,
+	"bold" => 700,
+	"extra-bold" => 800,
+	"heavy" => 900,
+	"extra-black" => 950,
+];
+const UNICODE_RANGES = [
+	"cyrillic-ext" => "U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F",
+	"cyrillic" => "U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116",
+	"greek-ext" => "U+1F00-1FFF",
+	"greek" => "U+0370-03FF",
+	"vietnamese" => "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB",
+	"latin-ext" => "U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF",
+	"latin" => "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+];
+
+if($argc <= 1) {
+	echo "Usage: download CSS_URI [FONT_PATH_PREFIX] [OUTPUT_TO]" . PHP_EOL;
+	exit(2);
+}
+
+try {
+	$uri = $argv[1] ?? null;
+	checkUri($uri);
+}
+catch(RuntimeException $exception) {
+	echo "Error: " . $exception->getMessage() . PHP_EOL;
+	exit(3);
+}
+
+$fontPathPrefix = "/font";
+if(isset($argv[2])) {
+	$fontPathPrefix = $argv[2];
+}
+
+$outputTo = __DIR__ . "/font";
+if(isset($argv[3])) {
+	$outputTo = $argv[3];
+}
+
+echo "Downloading $uri ..." . PHP_EOL;
+
+$data = [];
+
+$ch = curl_init($uri);
+curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:73.0) Gecko/20100101 Firefox/73.0");
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+$css = curl_exec($ch);
+$data = parseCss($css);
+
+$outputTo = rtrim($outputTo, "/");
+if(!is_dir($outputTo)) {
+	echo "Creating directory: $outputTo" . PHP_EOL;
+	if(!mkdir($outputTo, 0775, true)) {
+		exit(4);
+	}
+}
+$outputTo = realpath($outputTo);
+download($data, $outputTo);
+writeSass($data, $outputTo, $fontPathPrefix);
+
+function checkUri(string $uri):void {
+	$components = parse_url($uri);
+
+	if(!array_key_exists("host", $components)
+		|| !array_key_exists("path", $components)
+		|| !array_key_exists("query", $components)) {
+		throw new RuntimeException("URI is not a valid for Google Fonts CSS");
+	}
+
+	if($components["host"] !== VALID_HOST) {
+		throw new RuntimeException("Host is invalid - $components[host]");
+	}
+
+	if($components["path"] !== VALID_PATH) {
+		throw new RuntimeException("Path is invalid - $components[path]");
+	}
+
+	if(strpos($components["query"], VALID_QUERY) !== 0) {
+		throw new RuntimeException("Query is invalid - $components[query]");
+	}
+}
+
+function parseCss(string $css):array {
+	if(!preg_match_all(REGEX_CSS_PARTS, $css, $matches)) {
+		throw new RuntimeException("Failed parsing CSS");
+	}
+
+	$cssData = [];
+
+	foreach($matches["UNICODE_NAME"] as $i => $unicodeName) {
+		$fontFamily = null;
+		$fontFamily = null;
+		$fontStyle = null;
+		$fontWeight = null;
+		$woffUri = null;
+		$unicodeRange = null;
+
+		foreach(explode("\n", $matches["CSS_LINES"][$i]) as $line) {
+			if(preg_match(REGEX_FONT_FAMILY, $line, $lineMatches)) {
+				$fontFamily = $lineMatches[1];
+			}
+			if(preg_match(REGEX_FONT_STYLE, $line, $lineMatches)) {
+				$fontStyle = $lineMatches[1];
+			}
+			if(preg_match(REGEX_FONT_WEIGHT, $line, $lineMatches)) {
+				$fontWeight = $lineMatches[1];
+			}
+			if(preg_match(REGEX_URI, $line, $lineMatches)) {
+				$woffUri = $lineMatches[1];
+			}
+			if(preg_match(REGEX_UNICODE_RANGE, $line, $lineMatches)) {
+				$unicodeRange = $lineMatches[1];
+			}
+		}
+
+		if(!isset($cssData[$fontFamily])) {
+			$cssData[$fontFamily] = [];
+		}
+
+		if(!isset($cssData[$fontFamily][$unicodeName])) {
+			$cssData[$fontFamily][$unicodeName] = [];
+		}
+
+		$cssData[$fontFamily][$unicodeName] []= [
+			"style" => $fontStyle,
+			"weight" => $fontWeight,
+			"src" => $woffUri,
+			"range" => $unicodeRange,
+		];
+	}
+
+	return $cssData;
+}
+
+function getWeightName(string $cssWeight):string {
+	$name = array_search($cssWeight, WEIGHT_NAMES);
+	return $name ?: $cssWeight;
+}
+
+function download(array $data, string $outputTo):void {
+	foreach($data as $fontFamily => $unicodeNames) {
+		$lowercaseFontName = strtolower(str_replace(" ", "-", $fontFamily));
+		$outputToWithFontName = "$outputTo/$lowercaseFontName";
+		if(!is_dir($outputToWithFontName)) {
+			mkdir($outputToWithFontName, 0775, true);
+		}
+
+		foreach($unicodeNames as $unicodeName => $definitions) {
+			foreach($definitions as $properties) {
+				$weightName = getWeightName($properties["weight"]);
+				$fileName = "$lowercaseFontName-$weightName-$properties[style]-$unicodeName.woff2";
+				$pathName = "$outputTo/$lowercaseFontName/$fileName";
+
+				$src = $properties["src"];
+				if(empty($src)) {
+					var_dump($properties);die();
+				}
+				echo $src . PHP_EOL;
+
+				$ch = curl_init($src);
+				curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+				curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:73.0) Gecko/20100101 Firefox/73.0");
+				$blob = curl_exec($ch);
+				if(!is_dir(dirname($pathName))) {
+					mkdir(dirname($pathName), 0775, true);
+				}
+
+				if(!file_put_contents($pathName, $blob)) {
+					throw new RuntimeException("Failed writing font file: $pathName");
+				}
+			}
+		}
+	}
+}
+
+function writeSass(array $data, string $outputTo, string $fontPathPrefix):void {
+	$outputTo = trim($outputTo);
+	foreach($data as $fontFamily => $unicodeNames) {
+		$lowercaseFontName = strtolower(str_replace(" ", "-", $fontFamily));
+		$sassFileName = "$outputTo/$lowercaseFontName.scss";
+		$sassContent = "";
+		$sassContent .= "\$font-unicode-ranges: (";
+		$sassContent .= "\n";
+		foreach($unicodeNames as $unicodeName => $definitions) {
+			$unicodeContent = UNICODE_RANGES[$unicodeName];
+			$sassContent .= "\t$unicodeName: \"$unicodeContent\",";
+			$sassContent .= "\n";
+		}
+		$sassContent .= ");";
+
+		$fontStyleArray = [];
+		$fontWeightArray = [];
+		foreach($unicodeNames as $unicodeName => $definitions) {
+			foreach($definitions as $properties) {
+				$fontStyleArray []= $properties["style"];
+				$fontWeightArray []= $properties["weight"];
+			}
+		}
+		$fontStyleArray = array_unique($fontStyleArray);
+		$fontWeightArray = array_unique($fontWeightArray);
+
+		$sassContent .= "\n\n";
+		$sassContent .= "\$font-styles: \n\t" . implode("\n\t", $fontStyleArray) . "\n;";
+		$sassContent .= "\n";
+		$sassContent .= "\$font-weights: (\n";
+		foreach($fontWeightArray as $fontWeight) {
+			$weightName = getWeightName($fontWeight);
+			$sassContent .= "\t$weightName: $fontWeight,";
+			$sassContent .= "\n";
+		}
+		$sassContent .= ");";
+
+		$sassContent .= "\n\n";
+
+		$sassContent .= <<<SASS
+@each \$unicode-name, \$unicode-range in \$font-unicode-ranges {
+	@each \$style in \$font-styles {
+		@each \$weight-name, \$weight-value in \$font-weights {
+			@font-face {
+				font-family: "$fontFamily";
+				font-style: \$style;
+				font-weight: \$weight-value;
+				font-display: swap;
+				src: url("$fontPathPrefix/$lowercaseFontName/$lowercaseFontName-#{\$weight-name}-#{\$style}-#{\$unicode-name}.woff2") format("woff2");
+				unicode-range: \$unicode-range;
+			}
+		}
+	}
+}
+SASS;
+
+		file_put_contents($sassFileName, $sassContent);
+	}
+}
